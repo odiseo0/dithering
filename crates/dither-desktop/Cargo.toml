@@ -1,0 +1,16 @@
+[package]
+name = "dither-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+dither-engine = { path = "../dither-engine" }
+eframe = { version = "=0.35.0", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+] }

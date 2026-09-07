@@ -1,0 +1,25 @@
+name: Calidad
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v6
+
+      - name: Instalar Rust
+        run: rustup show active-toolchain
+
+      - name: Usar caché de Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Ejecutar controles
+        shell: pwsh
+        run: ./scripts/check.ps1
