@@ -22,7 +22,9 @@ pub fn render(
         EffectConfig::ErrorDiffusion(config) => {
             algorithms::render_error_diffusion(source, config, cancellation, progress)
         }
-        EffectConfig::Ordered(_) => unavailable(EffectKind::Ordered),
+        EffectConfig::Ordered(config) => {
+            algorithms::render_ordered(source, config, cancellation, progress)
+        }
         EffectConfig::Halftone(_) => unavailable(EffectKind::Halftone),
     }
 }
@@ -47,9 +49,7 @@ mod tests {
 
     use super::{RenderError, render};
     use crate::components::{
-        dithering::{
-            EffectConfig, EffectKind, HalftoneConfig, NeverCancel, OrderedConfig, ProgressSink,
-        },
+        dithering::{EffectConfig, EffectKind, HalftoneConfig, NeverCancel, ProgressSink},
         raster::Raster,
     };
 
@@ -63,29 +63,17 @@ mod tests {
     }
 
     #[test]
-    fn dispatches_unimplemented_effects_to_their_branches() {
+    fn dispatches_the_unimplemented_effect_to_its_branch() {
         let source = Raster::new(1, 1, vec![0, 0, 0, 255]).expect("valid fixture");
-        let cases = [
-            (
-                EffectConfig::Ordered(OrderedConfig::default()),
-                RenderError::EffectNotImplemented {
-                    effect: EffectKind::Ordered,
-                },
-            ),
-            (
-                EffectConfig::Halftone(HalftoneConfig::default()),
-                RenderError::EffectNotImplemented {
-                    effect: EffectKind::Halftone,
-                },
-            ),
-        ];
+        let config = EffectConfig::Halftone(HalftoneConfig::default());
+        let expected = RenderError::EffectNotImplemented {
+            effect: EffectKind::Halftone,
+        };
 
-        for (config, expected) in cases {
-            assert_eq!(
-                render(&source, &config, &NeverCancel, &RecordedProgress::default()),
-                Err(expected)
-            );
-        }
+        assert_eq!(
+            render(&source, &config, &NeverCancel, &RecordedProgress::default()),
+            Err(expected)
+        );
     }
 
     #[test]

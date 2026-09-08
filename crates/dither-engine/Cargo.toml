@@ -17,3 +17,7 @@ thiserror.workspace = true
 [[bench]]
 name = "error_diffusion"
 harness = false
+
+[[bench]]
+name = "ordered"
+harness = false

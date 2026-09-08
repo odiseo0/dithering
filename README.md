@@ -4,7 +4,7 @@ Aplicación portable para Windows 11 que aplicará dithering a una imagen. El no
 
 ## Estado
 
-El repositorio contiene la base de las fases 0, 1 y 2:
+El repositorio contiene la base de las fases 0 a 3:
 
 - `dither-engine`: motor sin interfaz ni acceso al sistema operativo;
 - `dither-desktop`: aplicación de Windows con `eframe` y Glow;
@@ -12,10 +12,11 @@ El repositorio contiene la base de las fases 0, 1 y 2:
 - ráster, color lineal, paleta y ajustes validados;
 - reducción por escala con reglas de alfa y bordes;
 - Floyd–Steinberg y Atkinson con escala, alfa, cancelación y progreso;
+- Bayer 2×2, 4×4 y 8×8 para paletas de 2 a 8 colores;
 - datos de prueba mínimos;
 - controles locales e integración continua en Windows.
 
-Bayer, semitono y las funciones para abrir o guardar imágenes aún no están implementados.
+Semitono y las funciones para abrir o guardar imágenes aún no están implementados.
 
 ## Uso durante el desarrollo
 
@@ -35,6 +36,7 @@ Ejecuta la medición base de difusión de error:
 
 ```powershell
 cargo bench -p dither-engine --bench error_diffusion
+cargo bench -p dither-engine --bench ordered
 ```
 
 Consulta los resultados y el coste estimado de memoria en
