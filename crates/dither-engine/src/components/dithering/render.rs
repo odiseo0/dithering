@@ -1,4 +1,4 @@
-use super::{CancellationCheck, EffectConfig, EffectKind, ProgressSink, algorithms};
+use super::{CancellationCheck, EffectConfig, ProgressSink, algorithms};
 use crate::components::raster::{Raster, RasterError};
 use thiserror::Error;
 
@@ -25,20 +25,16 @@ pub fn render(
         EffectConfig::Ordered(config) => {
             algorithms::render_ordered(source, config, cancellation, progress)
         }
-        EffectConfig::Halftone(_) => unavailable(EffectKind::Halftone),
+        EffectConfig::Halftone(config) => {
+            algorithms::render_halftone(source, *config, cancellation, progress)
+        }
     }
-}
-
-fn unavailable(effect: EffectKind) -> Result<Raster, RenderError> {
-    Err(RenderError::EffectNotImplemented { effect })
 }
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum RenderError {
     #[error("rendering was cancelled")]
     Cancelled,
-    #[error("the selected effect is not implemented")]
-    EffectNotImplemented { effect: EffectKind },
     #[error("the renderer produced an invalid image")]
     InvalidOutput(#[source] RasterError),
 }
@@ -49,7 +45,7 @@ mod tests {
 
     use super::{RenderError, render};
     use crate::components::{
-        dithering::{EffectConfig, EffectKind, HalftoneConfig, NeverCancel, ProgressSink},
+        dithering::{EffectConfig, HalftoneConfig, NeverCancel, ProgressSink},
         raster::Raster,
     };
 
@@ -63,17 +59,12 @@ mod tests {
     }
 
     #[test]
-    fn dispatches_the_unimplemented_effect_to_its_branch() {
+    fn dispatches_halftone_to_its_branch() {
         let source = Raster::new(1, 1, vec![0, 0, 0, 255]).expect("valid fixture");
         let config = EffectConfig::Halftone(HalftoneConfig::default());
-        let expected = RenderError::EffectNotImplemented {
-            effect: EffectKind::Halftone,
-        };
-
-        assert_eq!(
-            render(&source, &config, &NeverCancel, &RecordedProgress::default()),
-            Err(expected)
-        );
+        let output = render(&source, &config, &NeverCancel, &RecordedProgress::default())
+            .expect("halftone rendering must succeed");
+        assert_eq!(output.rgba(), &[0, 0, 0, 255]);
     }
 
     #[test]
