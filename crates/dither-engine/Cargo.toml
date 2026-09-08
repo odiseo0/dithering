@@ -10,3 +10,10 @@ workspace = true
 [lib]
 name = "dither_engine"
 path = "src/lib.rs"
+
+[dependencies]
+thiserror.workspace = true
+
+[[bench]]
+name = "error_diffusion"
+harness = false
