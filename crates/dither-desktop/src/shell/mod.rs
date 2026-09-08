@@ -1,4 +1,4 @@
-//! Entrada de la aplicación de escritorio.
+//! Desktop application entry point.
 
 mod app;
 mod theme;
