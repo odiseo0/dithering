@@ -21,7 +21,7 @@ pub fn run() -> eframe::Result {
         options,
         Box::new(|context| {
             theme::apply(&context.egui_ctx);
-            Ok(Box::new(DesktopApp))
+            Ok(Box::new(DesktopApp::new(&context.egui_ctx)))
         }),
     )
 }

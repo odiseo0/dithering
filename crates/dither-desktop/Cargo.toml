@@ -16,4 +16,5 @@ eframe = { version = "=0.35.0", default-features = false, features = [
     "glow",
 ] }
 image.workspace = true
+rfd.workspace = true
 thiserror.workspace = true
