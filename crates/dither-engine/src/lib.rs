@@ -9,7 +9,7 @@ pub use components::{
         NeverCancel, NoProgress, OrderedConfig, Palette, PaletteError, ProgressSink, RenderError,
         render,
     },
-    raster::{LinearRgb, Raster, RasterError, Rgb8, Scale, ScaleError},
+    raster::{LinearRgb, MAX_PIXELS, MAX_SIDE, Raster, RasterError, Rgb8, Scale, ScaleError},
 };
 
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");

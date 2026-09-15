@@ -11,6 +11,9 @@ Esta nota fija las decisiones que afectan al motor y a los adaptadores. Las prue
 - La salida es PNG RGBA de 8 bits, sin metadatos de entrada.
 - El resultado conserva el ancho, el alto y cada byte alfa de la imagen orientada.
 - La primera versión no gestiona perfiles ICC.
+- La carga limita el archivo comprimido a 512 MiB y el decodificador a 320 MB de reservas.
+- El guardado escribe primero un archivo temporal en la carpeta de destino y solo después
+  sustituye el archivo anterior.
 
 ## Transparencia
 
