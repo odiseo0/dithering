@@ -46,24 +46,36 @@ pub(crate) struct LogicalRaster {
     pub samples: Vec<LogicalSample>,
 }
 
+#[cfg(test)]
 pub(crate) fn reduce(source: &Raster, scale: Scale) -> LogicalRaster {
+    reduce_cancellable(source, scale, || false).expect("the test reduction is never cancelled")
+}
+
+pub(crate) fn reduce_cancellable(
+    source: &Raster,
+    scale: Scale,
+    mut is_cancelled: impl FnMut() -> bool,
+) -> Option<LogicalRaster> {
     let scale_u32 = u32::from(scale.get());
     let width = source.width().div_ceil(scale_u32);
     let height = source.height().div_ceil(scale_u32);
     let mut samples = Vec::new();
 
     for logical_y in 0..height {
+        if is_cancelled() {
+            return None;
+        }
         for logical_x in 0..width {
             samples.push(average_block(source, scale_u32, logical_x, logical_y));
         }
     }
 
-    LogicalRaster {
+    Some(LogicalRaster {
         width,
         height,
         scale,
         samples,
-    }
+    })
 }
 
 pub(crate) fn expand(
@@ -189,5 +201,18 @@ mod tests {
                 visible: false,
             }]
         );
+    }
+
+    #[test]
+    fn cancellation_stops_reduction_between_logical_rows() {
+        let source = Raster::new(2, 3, vec![0; 2 * 3 * 4]).expect("the fixture is valid");
+        let mut checks = 0;
+        let result = super::reduce_cancellable(&source, Scale::MIN, || {
+            checks += 1;
+            checks >= 2
+        });
+
+        assert!(result.is_none());
+        assert_eq!(checks, 2);
     }
 }

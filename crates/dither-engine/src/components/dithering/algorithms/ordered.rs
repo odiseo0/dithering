@@ -29,7 +29,8 @@ pub(crate) fn render_ordered(
     cancellation: &impl CancellationCheck,
     progress: &impl ProgressSink,
 ) -> Result<Raster, RenderError> {
-    let logical = scale::reduce(source, config.scale());
+    let logical = scale::reduce_cancellable(source, config.scale(), || cancellation.is_cancelled())
+        .ok_or(RenderError::Cancelled)?;
     let linear_colors: Vec<_> = config
         .palette()
         .colors()

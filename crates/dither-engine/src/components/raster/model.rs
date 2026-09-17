@@ -1,7 +1,9 @@
 use thiserror::Error;
 
 pub const MAX_SIDE: u32 = 16_384;
-pub const MAX_PIXELS: u64 = 40_000_000;
+// This limit includes 4K images while keeping the worst-case render below the
+// measured memory budget documented in docs/hardening-report.md.
+pub const MAX_PIXELS: u64 = 10_000_000;
 
 const CHANNELS: u64 = 4;
 
@@ -134,7 +136,7 @@ mod tests {
 
     #[test]
     fn rejects_too_many_pixels_before_buffer_validation() {
-        let side = 6_325;
+        let side = 3_163;
         let pixels = u64::from(side) * u64::from(side);
         assert!(pixels > MAX_PIXELS);
         assert_eq!(

@@ -18,9 +18,9 @@ Windows computers.
 The current full-frame implementation owns about 39 bytes per input pixel while it renders at
 scale 1: source RGBA (4), reduced samples (16), linear work colors (12), selected colors (3), and
 output RGBA (4). The 2,048 × 2,048 benchmark therefore needs about 156 MB (149 MiB), plus small
-vector and allocator costs. A 40-million-pixel image could need about 1.56 GB. This is a risk for
-the current image limit and must be reduced or enforced by a render-memory check before image I/O
-is added.
+vector and allocator costs. Phase 9 replaced the provisional 40-million-pixel limit with a final
+10-million-pixel limit. See [`hardening-report.md`](hardening-report.md) for the measured 4K result
+and the final memory decision.
 
 Bayer does not need the extra linear error buffer. At scale 1, its main full-frame buffers use about
 27 bytes per pixel, or about 108 MB (103 MiB) for the benchmark image.

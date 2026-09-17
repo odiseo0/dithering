@@ -148,13 +148,13 @@ fn scale_handles_partial_blocks_and_preserves_alpha() {
     assert_eq!(&output.rgba()[8..12], &[255, 255, 255, 64]);
 }
 
-struct CancelOnThirdCheck(Cell<u8>);
+struct CancelOnSixthCheck(Cell<u8>);
 
-impl CancellationCheck for CancelOnThirdCheck {
+impl CancellationCheck for CancelOnSixthCheck {
     fn is_cancelled(&self) -> bool {
         let calls = self.0.get() + 1;
         self.0.set(calls);
-        calls >= 3
+        calls >= 6
     }
 }
 
@@ -179,7 +179,7 @@ fn reports_rows_and_can_stop_between_them() {
     let result = render(
         &source,
         &ordered_config(BayerMatrix::Two, Scale::MIN, Palette::black_and_white()),
-        &CancelOnThirdCheck(Cell::new(0)),
+        &CancelOnSixthCheck(Cell::new(0)),
         &progress,
     );
 

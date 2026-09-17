@@ -12,7 +12,8 @@ pub(crate) fn render_error_diffusion(
     cancellation: &impl CancellationCheck,
     progress: &impl ProgressSink,
 ) -> Result<Raster, RenderError> {
-    let logical = scale::reduce(source, config.scale());
+    let logical = scale::reduce_cancellable(source, config.scale(), || cancellation.is_cancelled())
+        .ok_or(RenderError::Cancelled)?;
     let mut work: Vec<_> = logical.samples.iter().map(|sample| sample.color).collect();
     let mut output = vec![Rgb8::BLACK; logical.samples.len()];
 

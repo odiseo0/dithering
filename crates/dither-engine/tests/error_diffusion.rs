@@ -97,13 +97,13 @@ impl ProgressSink for Trace {
     }
 }
 
-struct CancelOnThirdCheck(Cell<u8>);
+struct CancelOnSixthCheck(Cell<u8>);
 
-impl CancellationCheck for CancelOnThirdCheck {
+impl CancellationCheck for CancelOnSixthCheck {
     fn is_cancelled(&self) -> bool {
         let calls = self.0.get() + 1;
         self.0.set(calls);
-        calls >= 3
+        calls >= 6
     }
 }
 
@@ -120,7 +120,7 @@ fn reports_each_logical_row_and_stops_when_cancelled() {
     let result = render(
         &source,
         &EffectConfig::default(),
-        &CancelOnThirdCheck(Cell::new(0)),
+        &CancelOnSixthCheck(Cell::new(0)),
         &progress,
     );
 
