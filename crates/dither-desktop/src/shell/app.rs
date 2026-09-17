@@ -339,9 +339,11 @@ impl DesktopApp {
         if ui.button("Abrir").on_hover_text("Ctrl+O").clicked() {
             self.open_requested(ui.ctx());
         }
+
         if ui.button("Pegar").on_hover_text("Ctrl+V").clicked() {
             self.paste_requested(ui.ctx());
         }
+
         if ui
             .add_enabled(self.state.can_save(), egui::Button::new("Guardar como"))
             .on_hover_text("Ctrl+S")
@@ -354,9 +356,11 @@ impl DesktopApp {
         ui.add_enabled_ui(has_document, |ui| {
             ui.selectable_value(&mut self.state.view, ResultView::Original, "Original");
             ui.selectable_value(&mut self.state.view, ResultView::Result, "Resultado");
+
             if ui.button("Ajustar").on_hover_text("Ctrl+F").clicked() {
                 self.viewer.fit();
             }
+
             if ui.button("100 %").on_hover_text("Ctrl+0").clicked()
                 && let Some(raster) = self.state.displayed_raster()
             {
@@ -364,6 +368,7 @@ impl DesktopApp {
             }
             ui.label(format!("{:.0} %", self.viewer.zoom_percent()));
         });
+
         if self.state.result_is_stale() {
             ui.label("Vista previa anterior");
         }
@@ -401,12 +406,14 @@ impl DesktopApp {
                         .changed();
                 });
             response.immediate |= response.changed;
+
             match self.settings.active_effect {
                 ActiveEffect::ErrorDiffusion => self.diffusion_controls(ui, &mut response),
                 ActiveEffect::Ordered => self.ordered_controls(ui, &mut response),
                 ActiveEffect::Halftone => self.halftone_controls(ui, &mut response),
             }
         });
+
         ui.separator();
         ui.checkbox(
             &mut self.keep_settings,
@@ -423,24 +430,29 @@ impl DesktopApp {
         ui.label("Paleta");
         let can_remove = self.settings.palette.len() > 2;
         let mut remove = None;
+
         for (index, color) in self.settings.palette.iter_mut().enumerate() {
             ui.horizontal(|ui| {
                 let mut rgb = [color.r, color.g, color.b];
+
                 if ui.color_edit_button_srgb(&mut rgb).changed() {
                     *color = Rgb8::new(rgb[0], rgb[1], rgb[2]);
                     response.changed = true;
                 }
                 ui.monospace(format!("#{:02X}{:02X}{:02X}", color.r, color.g, color.b));
+
                 if ui.add_enabled(can_remove, egui::Button::new("−")).clicked() {
                     remove = Some(index);
                 }
             });
         }
+
         if let Some(index) = remove {
             self.settings.remove_palette_color(index);
             response.changed = true;
             response.immediate = true;
         }
+
         if ui
             .add_enabled(
                 self.settings.palette.len() < 8,
@@ -511,12 +523,15 @@ impl DesktopApp {
                 "Cuadrado",
             )
             .changed();
+
         let cell = ui.add(
             egui::Slider::new(&mut self.settings.halftone_cell_size, 2..=128).text("Cuadrícula"),
         );
+
         if self.settings.halftone_max_size > self.settings.halftone_cell_size {
             self.settings.halftone_max_size = self.settings.halftone_cell_size;
         }
+
         let size = ui.add(
             egui::Slider::new(
                 &mut self.settings.halftone_max_size,
@@ -576,6 +591,7 @@ impl DesktopApp {
                 });
             });
         }
+
         if self.drag_hovered {
             let rect = ui.max_rect();
             ui.painter().rect_filled(
@@ -605,6 +621,7 @@ impl DesktopApp {
             ));
             ui.separator();
         }
+
         match &self.state.status {
             Status::Empty => ui.label("Sin imagen"),
             Status::Loading => ui.label("Abriendo imagen…"),
@@ -617,6 +634,7 @@ impl DesktopApp {
             Status::ResultReady => ui.label("Resultado listo"),
             Status::Saving => ui.label("Guardando…"),
         };
+
         if let Some(details) = &self.state.error_details {
             ui.collapsing("Detalles", |ui| {
                 ui.monospace(details);
@@ -654,9 +672,11 @@ fn color_control(ui: &mut egui::Ui, label: &str, color: &mut Rgb8) -> bool {
         ui.monospace(format!("#{:02X}{:02X}{:02X}", rgb[0], rgb[1], rgb[2]));
         changed
     });
+
     if changed.inner {
         *color = Rgb8::new(rgb[0], rgb[1], rgb[2]);
     }
+
     changed.inner
 }
 

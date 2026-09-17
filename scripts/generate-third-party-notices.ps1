@@ -55,7 +55,9 @@ foreach ($package in $external) {
         $lines.Add("--------------------------------------------------------------------------------")
         $lines.Add($licenseFile.Name)
         $lines.Add("")
-        $lines.Add((Get-Content -Raw -LiteralPath $licenseFile.FullName).Trim())
+        $content = (Get-Content -Raw -LiteralPath $licenseFile.FullName).Trim()
+        $content = ([regex]::Split($content, "\r?\n") | ForEach-Object { $_.TrimEnd() }) -join "`n"
+        $lines.Add($content)
         $lines.Add("")
     }
 }

@@ -4,7 +4,7 @@ Aplicación portable para Windows 11 que aplicará dithering a una imagen. El no
 
 ## Estado
 
-El repositorio contiene las fases 0 a 9:
+El repositorio contiene las fases 0 a 10:
 
 - `dither-engine`: motor sin interfaz ni acceso al sistema operativo;
 - `dither-desktop`: aplicación de Windows con `eframe` y Glow;
@@ -22,10 +22,12 @@ El repositorio contiene las fases 0 a 9:
 - arrastre, portapapeles, zoom, desplazamiento y fondo de transparencia;
 - vista reducida y mosaicos con caché limitado para imágenes grandes;
 - límites finales, pruebas de carga, cancelación medida y avisos de terceros;
+- ejecutable portable x64 con CRT estático, recursos incrustados, ZIP y SHA-256;
 - datos de prueba mínimos;
 - controles locales e integración continua en Windows.
 
-La fase restante cubre el ejecutable portable, su revisión en un Windows limpio y el ZIP final.
+El recorrido de desarrollo está completo. Por petición del usuario se omitió la prueba en un
+Windows limpio sin Rust; el resto de la fase portable está comprobado.
 
 ## Uso durante el desarrollo
 
@@ -54,5 +56,14 @@ Consulta los resultados y el coste estimado de memoria en
 Consulta las pruebas de resistencia y los límites finales en
 [`docs/hardening-report.md`](docs/hardening-report.md). Los avisos y textos de licencia de las
 dependencias están en [`THIRD-PARTY-NOTICES.txt`](THIRD-PARTY-NOTICES.txt).
+
+Genera el ZIP portable y su SHA-256 con:
+
+```powershell
+.\scripts\package.ps1
+```
+
+Consulta el detalle de la construcción en
+[`docs/portable-build.md`](docs/portable-build.md).
 
 Consulta los contratos antes de cambiar el modelo del motor: [`docs/architecture/contracts.md`](docs/architecture/contracts.md).

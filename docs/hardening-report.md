@@ -47,8 +47,8 @@ cada vuelta y comprueba que los bytes y la cantidad de entradas no superan sus t
 
 ## Dependencias y licencias
 
-La aplicación usa Glow como único motor gráfico. El grafo de producción para Windows x64 contiene
-162 paquetes externos fijados por `Cargo.lock`. Todos declaran una licencia. El archivo
+La aplicación usa Glow como único motor gráfico. El grafo de producción y construcción para
+Windows x64 contiene 172 paquetes externos fijados por `Cargo.lock`. Todos declaran una licencia. El archivo
 [`THIRD-PARTY-NOTICES.txt`](../THIRD-PARTY-NOTICES.txt) incluye el inventario, la expresión SPDX y
 los textos de licencia presentes en cada paquete. Se regenera sin red con:
 
