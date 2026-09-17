@@ -6,27 +6,35 @@ use std::{
 
 use dither_desktop::components::{
     document::{
-        DecodedImage, DocumentState, ImageCodec, PngWriter, ResultView, Status,
-        suggested_output_path,
+        ArboardClipboard, DecodedImage, DocumentState, ImageClipboard, ImageCodec, PngWriter,
+        ResultView, SourceFormat, Status, suggested_output_path,
     },
     processing::{
         Dispatch, DocumentId, ProcessingCoordinator, ProcessingEvent, RenderRequest, Revision,
     },
     settings::{ActiveEffect, Settings},
+    viewer::{ImageVariant, ViewImageId, Viewer},
 };
-use dither_engine::{BayerMatrix, DotShape, ErrorDiffusionAlgorithm, Raster, Rgb8};
+use dither_engine::{BayerMatrix, DotShape, ErrorDiffusionAlgorithm, Rgb8};
 use eframe::egui;
 
 struct LoadOutcome {
     generation: u64,
     path: PathBuf,
-    result: Result<DecodedImage, String>,
+    result: Result<DecodedImage, (String, String)>,
 }
 
 struct SaveOutcome {
     document_id: DocumentId,
     revision: Revision,
     result: Result<(), String>,
+}
+
+enum DroppedSelection {
+    None,
+    One(PathBuf),
+    Multiple(usize),
+    MissingPath,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -46,8 +54,8 @@ pub struct DesktopApp {
     load_receiver: mpsc::Receiver<LoadOutcome>,
     save_sender: mpsc::Sender<SaveOutcome>,
     save_receiver: mpsc::Receiver<SaveOutcome>,
-    original_texture: Option<egui::TextureHandle>,
-    result_texture: Option<egui::TextureHandle>,
+    viewer: Viewer,
+    drag_hovered: bool,
 }
 
 impl DesktopApp {
@@ -74,8 +82,8 @@ impl DesktopApp {
             load_receiver,
             save_sender,
             save_receiver,
-            original_texture: None,
-            result_texture: None,
+            viewer: Viewer::new(),
+            drag_hovered: false,
         }
     }
 
@@ -87,6 +95,10 @@ impl DesktopApp {
         else {
             return;
         };
+        self.start_path_load(context, path);
+    }
+
+    fn start_path_load(&mut self, context: &egui::Context, path: PathBuf) {
         self.load_generation = self.load_generation.saturating_add(1);
         let generation = self.load_generation;
         if let Some(coordinator) = self.coordinator.as_mut() {
@@ -98,7 +110,8 @@ impl DesktopApp {
         let spawn_result = thread::Builder::new()
             .name("dither-image-loader".to_owned())
             .spawn(move || {
-                let result = ImageCodec::load_path(&path).map_err(|error| error.to_string());
+                let result = ImageCodec::load_path(&path)
+                    .map_err(|error| (error.user_message().to_owned(), error.to_string()));
                 let _ignored = sender.send(LoadOutcome {
                     generation,
                     path,
@@ -118,10 +131,14 @@ impl DesktopApp {
                 continue;
             }
             match outcome.result {
-                Ok(decoded) => self.finish_load(context, outcome.path, decoded),
-                Err(details) => self
-                    .state
-                    .load_failed("No se pudo abrir la imagen".to_owned(), details),
+                Ok(decoded) => {
+                    let name = outcome.path.file_name().map_or_else(
+                        || "Imagen".to_owned(),
+                        |name| name.to_string_lossy().into_owned(),
+                    );
+                    self.finish_load(context, name, Some(outcome.path), decoded);
+                }
+                Err((message, details)) => self.state.load_failed(message, details),
             }
         }
 
@@ -133,8 +150,9 @@ impl DesktopApp {
         }
         for event in processing_events {
             let completed = matches!(event, ProcessingEvent::Completed { .. });
-            if self.state.apply_processing_event(event) && completed {
-                self.refresh_result_texture(context);
+            let _accepted = self.state.apply_processing_event(event);
+            if completed {
+                context.request_repaint();
             }
         }
 
@@ -158,24 +176,23 @@ impl DesktopApp {
         }
     }
 
-    fn finish_load(&mut self, context: &egui::Context, path: PathBuf, decoded: DecodedImage) {
+    fn finish_load(
+        &mut self,
+        _context: &egui::Context,
+        name: String,
+        path: Option<PathBuf>,
+        decoded: DecodedImage,
+    ) {
         if !self.keep_settings {
             self.settings = Settings::default();
         }
-        let name = path.file_name().map_or_else(
-            || "Imagen".to_owned(),
-            |name| name.to_string_lossy().into_owned(),
-        );
         let document_id = DocumentId::new(self.next_document_id);
         self.next_document_id = self.next_document_id.saturating_add(1);
-        self.state
-            .load_succeeded(document_id, name, Some(path), decoded);
-        self.original_texture = self
-            .state
-            .document
-            .as_ref()
-            .and_then(|document| load_texture(context, "original", &document.source));
-        self.result_texture = None;
+        self.state.load_succeeded(document_id, name, path, decoded);
+        if let Some(document) = self.state.document.as_ref() {
+            self.viewer
+                .reset_for_image(document.id.get(), &document.source);
+        }
         self.submit_current(Dispatch::Immediate);
     }
 
@@ -204,15 +221,6 @@ impl DesktopApp {
             Dispatch::Immediate
         } else {
             Dispatch::Debounced
-        });
-    }
-
-    fn refresh_result_texture(&mut self, context: &egui::Context) {
-        self.result_texture = self.state.document.as_ref().and_then(|document| {
-            document
-                .result
-                .as_ref()
-                .and_then(|(_, raster)| load_texture(context, "resultado", raster))
         });
     }
 
@@ -265,12 +273,78 @@ impl DesktopApp {
         }
     }
 
+    fn paste_requested(&mut self, context: &egui::Context) {
+        let result = ArboardClipboard::new().and_then(|mut clipboard| clipboard.read_image());
+        match result {
+            Ok(raster) => self.finish_load(
+                context,
+                "Imagen pegada".to_owned(),
+                None,
+                DecodedImage {
+                    raster,
+                    format: SourceFormat::Clipboard,
+                },
+            ),
+            Err(error) => self.state.load_failed(
+                "El portapapeles no contiene una imagen".to_owned(),
+                error.to_string(),
+            ),
+        }
+    }
+
+    fn handle_drop_and_shortcuts(&mut self, context: &egui::Context) {
+        let (hovered_files, dropped_files, paste, open, save, fit, actual) =
+            context.input(|input| {
+                (
+                    input.raw.hovered_files.clone(),
+                    input.raw.dropped_files.clone(),
+                    input.modifiers.command && input.key_pressed(egui::Key::V),
+                    input.modifiers.command && input.key_pressed(egui::Key::O),
+                    input.modifiers.command && input.key_pressed(egui::Key::S),
+                    input.modifiers.command && input.key_pressed(egui::Key::F),
+                    input.modifiers.command && input.key_pressed(egui::Key::Num0),
+                )
+            });
+        self.drag_hovered = hovered_files
+            .iter()
+            .any(|file| file.path.as_deref().is_some_and(has_supported_extension));
+        match dropped_selection(&dropped_files) {
+            DroppedSelection::None => {}
+            DroppedSelection::One(path) => self.start_path_load(context, path),
+            DroppedSelection::Multiple(count) => self.state.load_failed(
+                "Abre una imagen a la vez".to_owned(),
+                format!("Se recibieron {count} archivos"),
+            ),
+            DroppedSelection::MissingPath => self.state.load_failed(
+                "No se pudo abrir la imagen".to_owned(),
+                "El archivo soltado no tiene una ruta local".to_owned(),
+            ),
+        }
+        if !context.egui_wants_keyboard_input() {
+            if paste {
+                self.paste_requested(context);
+            } else if open {
+                self.open_requested(context);
+            } else if save {
+                self.save_requested(context);
+            } else if fit {
+                self.viewer.fit();
+            } else if actual && let Some(raster) = self.state.displayed_raster() {
+                self.viewer.actual_size(raster);
+            }
+        }
+    }
+
     fn top_bar(&mut self, ui: &mut egui::Ui) {
-        if ui.button("Abrir").clicked() {
+        if ui.button("Abrir").on_hover_text("Ctrl+O").clicked() {
             self.open_requested(ui.ctx());
+        }
+        if ui.button("Pegar").on_hover_text("Ctrl+V").clicked() {
+            self.paste_requested(ui.ctx());
         }
         if ui
             .add_enabled(self.state.can_save(), egui::Button::new("Guardar como"))
+            .on_hover_text("Ctrl+S")
             .clicked()
         {
             self.save_requested(ui.ctx());
@@ -280,6 +354,15 @@ impl DesktopApp {
         ui.add_enabled_ui(has_document, |ui| {
             ui.selectable_value(&mut self.state.view, ResultView::Original, "Original");
             ui.selectable_value(&mut self.state.view, ResultView::Result, "Resultado");
+            if ui.button("Ajustar").on_hover_text("Ctrl+F").clicked() {
+                self.viewer.fit();
+            }
+            if ui.button("100 %").on_hover_text("Ctrl+0").clicked()
+                && let Some(raster) = self.state.displayed_raster()
+            {
+                self.viewer.actual_size(raster);
+            }
+            ui.label(format!("{:.0} %", self.viewer.zoom_percent()));
         });
         if self.state.result_is_stale() {
             ui.label("Vista previa anterior");
@@ -450,24 +533,41 @@ impl DesktopApp {
         response.changed |= color_control(ui, "Punto", &mut self.settings.halftone_dot);
     }
 
-    fn central_panel(&self, ui: &mut egui::Ui) {
-        let texture = match self.state.view {
-            ResultView::Original => self.original_texture.as_ref(),
-            ResultView::Result => self
-                .result_texture
-                .as_ref()
-                .or(self.original_texture.as_ref()),
-        };
-        if let Some(texture) = texture {
-            let available = ui.available_size();
-            let original = texture.size_vec2();
-            let scale = (available.x / original.x)
-                .min(available.y / original.y)
-                .min(1.0);
-            let size = original * scale.max(0.01);
-            ui.centered_and_justified(|ui| {
-                ui.add(egui::Image::from_texture(texture).fit_to_exact_size(size));
-            });
+    fn central_panel(&mut self, ui: &mut egui::Ui) {
+        if let Some(document) = self.state.document.as_ref() {
+            let (id, raster) = match self.state.view {
+                ResultView::Original => (
+                    ViewImageId {
+                        document: document.id.get(),
+                        revision: 0,
+                        variant: ImageVariant::Original,
+                    },
+                    &document.source,
+                ),
+                ResultView::Result => document.result.as_ref().map_or_else(
+                    || {
+                        (
+                            ViewImageId {
+                                document: document.id.get(),
+                                revision: 0,
+                                variant: ImageVariant::Original,
+                            },
+                            &document.source,
+                        )
+                    },
+                    |(revision, raster)| {
+                        (
+                            ViewImageId {
+                                document: document.id.get(),
+                                revision: revision.get(),
+                                variant: ImageVariant::Result,
+                            },
+                            raster,
+                        )
+                    },
+                ),
+            };
+            self.viewer.show(ui, id, raster);
         } else {
             ui.centered_and_justified(|ui| {
                 ui.vertical_centered(|ui| {
@@ -475,6 +575,21 @@ impl DesktopApp {
                     ui.label("PNG, JPEG, JPG o WebP estático");
                 });
             });
+        }
+        if self.drag_hovered {
+            let rect = ui.max_rect();
+            ui.painter().rect_filled(
+                rect,
+                0.0,
+                egui::Color32::from_rgba_unmultiplied(35, 110, 190, 80),
+            );
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "Suelta la imagen para abrirla",
+                egui::FontId::proportional(20.0),
+                egui::Color32::WHITE,
+            );
         }
     }
 
@@ -512,6 +627,7 @@ impl DesktopApp {
 
 impl eframe::App for DesktopApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.handle_drop_and_shortcuts(ui.ctx());
         self.handle_background_events(ui.ctx());
         egui::Panel::top("top_bar").show(ui, |ui| {
             ui.horizontal(|ui| self.top_bar(ui));
@@ -528,17 +644,6 @@ impl eframe::App for DesktopApp {
             });
         egui::CentralPanel::default().show(ui, |ui| self.central_panel(ui));
     }
-}
-
-fn load_texture(
-    context: &egui::Context,
-    name: &str,
-    raster: &Raster,
-) -> Option<egui::TextureHandle> {
-    let width = usize::try_from(raster.width()).ok()?;
-    let height = usize::try_from(raster.height()).ok()?;
-    let image = egui::ColorImage::from_rgba_unmultiplied([width, height], raster.rgba());
-    Some(context.load_texture(name, image, egui::TextureOptions::NEAREST))
 }
 
 fn color_control(ui: &mut egui::Ui, label: &str, color: &mut Rgb8) -> bool {
@@ -571,9 +676,31 @@ const fn bayer_name(matrix: BayerMatrix) -> &'static str {
     }
 }
 
+fn has_supported_extension(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "webp"
+            )
+        })
+}
+
+fn dropped_selection(files: &[egui::DroppedFile]) -> DroppedSelection {
+    match files {
+        [] => DroppedSelection::None,
+        [file] => file
+            .path
+            .clone()
+            .map_or(DroppedSelection::MissingPath, DroppedSelection::One),
+        many => DroppedSelection::Multiple(many.len()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::DesktopApp;
+    use super::{DesktopApp, DroppedSelection, dropped_selection};
     use dither_desktop::components::document::{DecodedImage, SourceFormat};
     use dither_engine::Raster;
 
@@ -597,7 +724,12 @@ mod tests {
         let mut app = DesktopApp::new(&context);
         app.settings.scale = 4;
 
-        app.finish_load(&context, "entrada.png".into(), decoded());
+        app.finish_load(
+            &context,
+            "entrada.png".to_owned(),
+            Some("entrada.png".into()),
+            decoded(),
+        );
 
         assert_eq!(app.settings.scale, 1);
     }
@@ -609,8 +741,30 @@ mod tests {
         app.keep_settings = true;
         app.settings.scale = 4;
 
-        app.finish_load(&context, "entrada.png".into(), decoded());
+        app.finish_load(
+            &context,
+            "entrada.png".to_owned(),
+            Some("entrada.png".into()),
+            decoded(),
+        );
 
         assert_eq!(app.settings.scale, 4);
+    }
+
+    #[test]
+    fn drop_accepts_one_local_file_and_rejects_multiple_files() {
+        let one = [eframe::egui::DroppedFile {
+            path: Some("imagen.png".into()),
+            ..Default::default()
+        }];
+        assert!(matches!(
+            dropped_selection(&one),
+            DroppedSelection::One(path) if path.ends_with("imagen.png")
+        ));
+        let two = [one[0].clone(), one[0].clone()];
+        assert!(matches!(
+            dropped_selection(&two),
+            DroppedSelection::Multiple(2)
+        ));
     }
 }

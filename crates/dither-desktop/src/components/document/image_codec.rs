@@ -12,6 +12,7 @@ pub enum SourceFormat {
     Png,
     Jpeg,
     WebP,
+    Clipboard,
 }
 
 impl fmt::Display for SourceFormat {
@@ -20,6 +21,7 @@ impl fmt::Display for SourceFormat {
             Self::Png => "PNG",
             Self::Jpeg => "JPEG",
             Self::WebP => "WebP",
+            Self::Clipboard => "Portapapeles",
         })
     }
 }
@@ -84,15 +86,17 @@ impl ImageCodec {
             return Err(ImageLoadError::AnimatedImage);
         }
 
-        let mut reader = ImageReader::with_format(Cursor::new(bytes), image_format);
+        validate_header_dimensions(bytes, format)?;
+
+        let reader = ImageReader::with_format(Cursor::new(bytes), image_format);
+        let mut decoder = reader.into_decoder().map_err(ImageLoadError::Decode)?;
+        let (width, height) = decoder.dimensions();
+        validate_dimensions(width, height)?;
         let mut limits = Limits::default();
         limits.max_image_width = Some(MAX_SIDE);
         limits.max_image_height = Some(MAX_SIDE);
         limits.max_alloc = Some(MAX_DECODE_ALLOC);
-        reader.limits(limits);
-        let mut decoder = reader.into_decoder().map_err(ImageLoadError::Decode)?;
-        let (width, height) = decoder.dimensions();
-        validate_dimensions(width, height)?;
+        decoder.set_limits(limits).map_err(ImageLoadError::Decode)?;
         let orientation = decoder.orientation().map_err(ImageLoadError::Decode)?;
         let mut dynamic_image =
             DynamicImage::from_decoder(decoder).map_err(ImageLoadError::Decode)?;
@@ -102,6 +106,38 @@ impl ImageCodec {
             .map_err(ImageLoadError::InvalidRaster)?;
 
         Ok(DecodedImage { raster, format })
+    }
+}
+
+fn validate_header_dimensions(bytes: &[u8], format: SourceFormat) -> Result<(), ImageLoadError> {
+    if format != SourceFormat::Png {
+        return Ok(());
+    }
+    let Some(dimensions) = bytes.get(16..24) else {
+        return Ok(());
+    };
+    let width = u32::from_be_bytes([dimensions[0], dimensions[1], dimensions[2], dimensions[3]]);
+    let height = u32::from_be_bytes([dimensions[4], dimensions[5], dimensions[6], dimensions[7]]);
+    validate_dimensions(width, height)
+}
+
+impl ImageLoadError {
+    #[must_use]
+    pub const fn user_message(&self) -> &'static str {
+        match self {
+            Self::Read(_) => "No se pudo leer el archivo",
+            Self::EncodedFileTooLarge => "El archivo supera el límite de 512 MB",
+            Self::UnsupportedFormat => "El formato de imagen no está admitido",
+            Self::AnimatedImage => "Las imágenes animadas no están admitidas",
+            Self::Decode(_) => "La imagen está dañada o no se puede abrir",
+            Self::InvalidRaster(RasterError::SideTooLong { .. }) => {
+                "La imagen supera 16.384 píxeles por lado"
+            }
+            Self::InvalidRaster(RasterError::TooManyPixels { .. }) => {
+                "La imagen supera el límite de 10 millones de píxeles"
+            }
+            Self::InvalidRaster(_) => "Las dimensiones de la imagen no son válidas",
+        }
     }
 }
 
@@ -135,7 +171,7 @@ fn is_animated(bytes: &[u8], format: SourceFormat) -> bool {
     match format {
         SourceFormat::Png => png_has_animation(bytes),
         SourceFormat::WebP => webp_has_animation(bytes),
-        SourceFormat::Jpeg => false,
+        SourceFormat::Jpeg | SourceFormat::Clipboard => false,
     }
 }
 

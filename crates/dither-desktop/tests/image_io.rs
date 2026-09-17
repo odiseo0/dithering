@@ -148,12 +148,52 @@ fn rejects_unsupported_and_corrupt_input_without_panicking() {
 }
 
 #[test]
+fn corrupt_inputs_return_stable_spanish_messages() {
+    let cases: [&[u8]; 7] = [
+        b"",
+        b"\x89PNG\r\n\x1a\n",
+        b"\xff\xd8\xff",
+        b"RIFF\x04\x00\x00\x00WEBP",
+        b"GIF89a",
+        &[0; 32],
+        &[0xff; 64],
+    ];
+
+    for bytes in cases {
+        let error = ImageCodec::decode(bytes).expect_err("corrupt input must fail");
+        assert!(!error.user_message().is_empty());
+        assert!(
+            error.user_message().contains("imagen") || error.user_message().contains("formato")
+        );
+    }
+}
+
+#[test]
+fn every_png_prefix_is_handled_without_panicking() {
+    let mut png = Vec::new();
+    PngEncoder::new(&mut png)
+        .write_image(&[10, 20, 30, 255], 1, 1, ExtendedColorType::Rgba8)
+        .expect("PNG encoding succeeds");
+
+    for end in 0..png.len() {
+        if let Ok(decoded) = ImageCodec::decode(&png[..end]) {
+            assert_eq!(decoded.raster.rgba(), &[10, 20, 30, 255]);
+        }
+    }
+}
+
+#[test]
 fn rejects_extreme_dimensions_from_the_header_before_pixel_allocation() {
     let too_wide = png_header(16_385, 1);
     assert!(ImageCodec::decode(&too_wide).is_err());
 
-    let too_many_pixels = png_header(6_325, 6_325);
-    assert!(ImageCodec::decode(&too_many_pixels).is_err());
+    let too_many_pixels = png_header(4_000, 2_501);
+    let error = ImageCodec::decode(&too_many_pixels).expect_err("pixel limit must be enforced");
+    assert_eq!(
+        error.user_message(),
+        "La imagen supera el límite de 10 millones de píxeles",
+        "unexpected error: {error:?}"
+    );
 }
 
 #[test]
@@ -243,6 +283,9 @@ fn png_header(width: u32, height: u32) -> Vec<u8> {
     png.extend_from_slice(&13_u32.to_be_bytes());
     png.extend_from_slice(&chunk);
     png.extend_from_slice(&crc32(&chunk).to_be_bytes());
+    png.extend_from_slice(&0_u32.to_be_bytes());
+    png.extend_from_slice(b"IEND");
+    png.extend_from_slice(&crc32(b"IEND").to_be_bytes());
     png
 }
 
