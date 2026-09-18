@@ -351,6 +351,7 @@ impl DesktopApp {
         {
             self.save_requested(ui.ctx());
         }
+
         ui.separator();
         let has_document = self.state.document.is_some();
         ui.add_enabled_ui(has_document, |ui| {
